@@ -1,0 +1,7 @@
+{
+  "name": "GuardVision AI Dashboard",
+  "description": "A high-performance AI-driven vehicle safety dashboard featuring real-time object detection, distance estimation, threat analysis, and violation logging for industrial and automotive safety.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
