@@ -17,7 +17,7 @@
 - 🪖 **Automated PPE Compliance**: Deep-vision helmet detection. Automatically flags safety violations if an operator is detected without head protection.
 - 👁️ **Fatigue Monitoring**: Analyzes facial biometrics to estimate operator fatigue levels (0-100%) and triggers critical alerts for microsleep risks.
 - 📏 **Spatial Proximity & HUD**: LiDAR-style distance estimation (in meters) with a dynamic "Critical Tether" UI for objects within a 1.2m collision zone.
-- 📱 **iOS 18 Inspired UI/UX**: Immersive glassmorphism dashboard featuring high-fidelity animations, a sleek Home Screen, and a mission-critical HUD.
+- 📱 **Premium Inspired UI/UX Dashboard**: Immersive glassmorphism dashboard featuring high-fidelity animations, a sleek Home Screen, and a mission-critical HUD.
 - 📋 **Violation Database**: Real-time logging of safety breaches with severity categorization (LOW, HIGH, CRITICAL) and timestamping.
 - 🔊 **Audio Alerts**: Frequency-modulated sonic warnings for critical proximity and safety hazards.
 
@@ -27,7 +27,7 @@
 
 - **Framework**: React 19 + TypeScript
 - **AI Core**: Google Gemini 3 Flash (Vision-Language Model)
-- **Styles**: Tailwind CSS + iOS 18 Aesthetic (Glassmorphism)
+- **Styles**: Tailwind CSS + Premium Aesthetic (Glassmorphism)
 - **Optics**: WebRTC / MediaStream API for Multi-Camera support
 - **Icons**: Lucide-inspired SVG System
 
@@ -71,7 +71,7 @@ GuardVision operates on a **Neural-Loop Architecture**:
 
 ## 📸 Dashboard Preview
 
-- **Home Screen**: iOS-style widgets showing current safety status, telemetry summaries, and camera device selection.
+- **Home Screen**: Premium widgets showing current safety status, telemetry summaries, and camera device selection.
 - **Monitor Mode**: Immersive full-screen HUD with scanlines, CRT effects, and tactical bounding boxes.
 - **Violation DB**: Scrolling table showing every confirmed safety breach for post-session review.
 
