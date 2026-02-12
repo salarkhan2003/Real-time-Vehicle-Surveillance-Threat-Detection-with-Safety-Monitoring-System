@@ -18,6 +18,8 @@ const App: React.FC = () => {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [errorStatus, setErrorStatus] = useState<string | null>(null);
   const [isEmergencyAlarm, setIsEmergencyAlarm] = useState(false);
+  const [isFatigueActive, setIsFatigueActive] = useState(true);
+  const [isVehicleActive, setIsVehicleActive] = useState(true);
   const [stats, setStats] = useState<SystemStats>({
     detectionCount: 0,
     speed: 0,
@@ -134,6 +136,12 @@ const App: React.FC = () => {
 
   const runInference = useCallback(async () => {
     if (!videoRef.current || isProcessing || !isMonitoring) return;
+    
+    // Stop inference if both modes are off
+    if (!isFatigueActive && !isVehicleActive) {
+      setDetections([]);
+      return;
+    }
 
     const canvas = document.createElement('canvas');
     canvas.width = videoRef.current.videoWidth || 640;
@@ -141,77 +149,82 @@ const App: React.FC = () => {
     const ctx = canvas.getContext('2d');
     if (!ctx || canvas.width === 0) return;
     ctx.drawImage(videoRef.current, 0, 0);
-    const base64Data = canvas.toDataURL('image/jpeg', 0.6).split(',')[1];
+    const base64Data = canvas.toDataURL('image/jpeg', 0.8);
 
     setIsProcessing(true);
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-      // Ultra-specific instruction for Gemini Flash to maximize spatial awareness
-      const prompt = `Task: Specialized Safety Detection.
-      1. SENSITIVITY: Detect EVERY [person, vehicle, animal, obstacle] visible.
-      2. COORDINATES: Normalized bounding boxes [x, y, w, h] from 0 to 1000.
-      3. BIOMETRICS: Rate driver fatigue (0.0=awake, 1.0=asleep).
-      4. PPE: Set hasHelmet=true for persons with head protection.
-      5. SPATIAL: Distance in meters.
-      OUTPUT JSON ONLY.`;
-
-      const response = await ai.models.generateContent({
-        model: 'gemini-3-flash-preview',
-        contents: [{ parts: [{ inlineData: { data: base64Data, mimeType: "image/jpeg" } }, { text: prompt }] }],
-        config: {
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              detections: {
-                type: Type.ARRAY,
-                items: {
-                  type: Type.OBJECT,
-                  properties: {
-                    label: { type: Type.STRING },
-                    confidence: { type: Type.NUMBER },
-                    x: { type: Type.NUMBER }, y: { type: Type.NUMBER }, w: { type: Type.NUMBER }, h: { type: Type.NUMBER },
-                    distance: { type: Type.NUMBER },
-                    hasHelmet: { type: Type.BOOLEAN, nullable: true }
-                  },
-                  required: ["label", "confidence", "x", "y", "w", "h", "distance"]
-                }
-              },
-              fatigue: { type: Type.NUMBER },
-              speed: { type: Type.NUMBER }
-            }
+      // Use YOLOv8 backend for accurate detection with mode selection
+      const response = await fetch('http://localhost:5000/detect', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          image: base64Data,
+          modes: {
+            fatigue: isFatigueActive,
+            vehicle: isVehicleActive
           }
-        }
+        })
       });
 
-      // Cleanup response text (remove markdown if model adds it)
-      const cleanJson = response.text.replace(/```json|```/gi, '').trim();
-      const result = JSON.parse(cleanJson || "{}");
+      if (!response.ok) {
+        throw new Error(`Backend error: ${response.status}`);
+      }
+
+      const result = await response.json();
       setErrorStatus(null);
 
+      // Handle fatigue data with details
+      let currentFatigue = stats.fatigue;
+      if (result.fatigue !== undefined) {
+        currentFatigue = result.fatigue;
+        
+        // Log detailed fatigue info if available
+        if (result.fatigueDetails) {
+          const details = result.fatigueDetails;
+          if (details.eyes_closed) {
+            addLog("⚠️ ALERT: Eyes closed detected!");
+          }
+          if (details.yawning) {
+            addLog("⚠️ ALERT: Yawning detected!");
+          }
+          if (details.head_tilted) {
+            addLog("⚠️ ALERT: Head tilting detected!");
+          }
+        }
+      }
+
       const mappedDetections: Detection[] = (result.detections || [])
-        .filter((d: any) => d.confidence > 0.15) // High sensitivity for low light
+        .filter((d: any) => {
+          // ULTRA LOW threshold for maximum detection
+          if (!d.label || !d.confidence) return false;
+          if (d.confidence < 0.15) return false; // Ultra low for max detection
+          if (d.w <= 0 || d.h <= 0) return false; // Invalid box
+          if (d.x < 0 || d.y < 0 || d.x > 1000 || d.y > 1000) return false; // Out of bounds
+          return true;
+        })
         .map((d: any, i: number) => ({
           id: `det-${Date.now()}-${i}`,
           label: d.label.toUpperCase(),
           confidence: d.confidence,
           bbox: { 
-            x: (d.x / 1000) * canvas.width, 
-            y: (d.y / 1000) * canvas.height, 
-            width: (d.w / 1000) * canvas.width, 
-            height: (d.h / 1000) * canvas.height 
+            x: Math.max(0, (d.x / 1000) * canvas.width), 
+            y: Math.max(0, (d.y / 1000) * canvas.height), 
+            width: Math.min((d.w / 1000) * canvas.width, canvas.width), 
+            height: Math.min((d.h / 1000) * canvas.height, canvas.height)
           },
-          distance: d.distance
+          distance: Math.max(0.5, Math.min(d.distance, 100)) // Clamp distance
         }));
 
       setDetections(mappedDetections);
-      addLog(`INF: Detected ${mappedDetections.length} entities.`);
+      
+      // Only log if there are actual detections or fatigue changes
+      if (mappedDetections.length > 0 || (isFatigueActive && Math.abs(currentFatigue - stats.fatigue) > 0.1)) {
+        addLog(`INF: Detected ${mappedDetections.length} entities. Fatigue: ${(currentFatigue * 100).toFixed(0)}%`);
+      }
 
       const closestDist = mappedDetections.length > 0 
         ? Math.min(...mappedDetections.map(d => d.distance)) 
         : 10;
-
-      const currentFatigue = result.fatigue ?? stats.fatigue;
       
       setStats(prev => ({
         ...prev,
@@ -221,33 +234,58 @@ const App: React.FC = () => {
         helmetStatus: !mappedDetections.some(d => d.label === 'PERSON' && (d as any).hasHelmet === false)
       }));
 
-      if (currentFatigue > 0.6 || closestDist < 1.5) {
-        if (!isEmergencyAlarm) setIsEmergencyAlarm(true);
-      } else {
-        if (isEmergencyAlarm) setIsEmergencyAlarm(false);
+      // Emergency alarm logic - AGGRESSIVE THRESHOLDS for safety
+      let shouldTriggerAlarm = false;
+      
+      // Check fatigue only if fatigue mode is active - VERY AGGRESSIVE
+      if (isFatigueActive && currentFatigue > 0.5) {  // Trigger at 50% (was 60%)
+        shouldTriggerAlarm = true;
+      }
+      
+      // Check collision only if vehicle mode is active - VERY AGGRESSIVE
+      if (isVehicleActive && closestDist < 2.5) {  // Trigger at 2.5m (was 1.5m)
+        shouldTriggerAlarm = true;
+      }
+      
+      // Update alarm state
+      if (shouldTriggerAlarm && !isEmergencyAlarm) {
+        setIsEmergencyAlarm(true);
+      } else if (!shouldTriggerAlarm && isEmergencyAlarm) {
+        setIsEmergencyAlarm(false);
       }
 
-      mappedDetections.forEach(d => { 
-        if (d.distance < 1.0) triggerViolation(`IMMINENT: ${d.label}`, ThreatLevel.CRITICAL); 
-      });
+      // Trigger violations only if vehicle mode is active - MORE AGGRESSIVE
+      if (isVehicleActive) {
+        mappedDetections.forEach(d => { 
+          if (d.distance < 2.0) {  // Trigger at 2m (was 1m)
+            triggerViolation(`IMMINENT: ${d.label}`, ThreatLevel.CRITICAL);
+          } else if (d.distance < 3.5) {  // Warning at 3.5m
+            triggerViolation(`WARNING: ${d.label} APPROACHING`, ThreatLevel.HIGH);
+          }
+        });
+      }
 
     } catch (err: any) {
-      if (err.message?.includes('429')) {
-        setErrorStatus("QUOTA EXCEEDED - CHECK PLAN");
-        addLog("SYSTEM: API Limit reached.");
+      if (err.message?.includes('Failed to fetch')) {
+        setErrorStatus("YOLO BACKEND OFFLINE");
+        addLog("ERROR: Detection server not running. Start backend/server.py");
       } else {
+        setErrorStatus("DETECTION ERROR");
         addLog("SYSTEM: Processing Error.");
       }
       console.error(err);
     } finally { setIsProcessing(false); }
-  }, [isProcessing, isMonitoring, triggerViolation, stats.fatigue, isEmergencyAlarm, addLog]);
+  }, [isProcessing, isMonitoring, triggerViolation, stats.fatigue, isEmergencyAlarm, addLog, isFatigueActive, isVehicleActive]);
 
   useEffect(() => {
-    if (isMonitoring) {
-      const timer = setInterval(runInference, 4000); // 4s for safety
+    if (isMonitoring && (isFatigueActive || isVehicleActive)) {
+      const timer = setInterval(runInference, 500); // 500ms for fast real-time detection
       return () => clearInterval(timer);
+    } else if (isMonitoring && !isFatigueActive && !isVehicleActive) {
+      // Clear detections when both modes are off
+      setDetections([]);
     }
-  }, [isMonitoring, runInference]);
+  }, [isMonitoring, runInference, isFatigueActive, isVehicleActive]);
 
   const toggleFullscreen = useCallback(() => {
     if (!document.fullscreenElement) document.documentElement.requestFullscreen().then(() => setIsFullscreen(true));
@@ -259,7 +297,30 @@ const App: React.FC = () => {
       {view === 'home' ? (
         <HomeDashboard stats={stats} violations={violations} onStart={() => startMonitoring()} availableCameras={availableCameras} selectedCameraId={selectedCameraId} onCameraSelect={setSelectedCameraId} onRefreshCameras={fetchCameras} />
       ) : (
-        <Dashboard stream={stream} videoRef={videoRef} detections={detections} logs={logs} violations={violations} stats={stats} isProcessing={isProcessing} onTriggerAlert={() => { initOrResumeAudio(); triggerViolation("MANUAL OVERRIDE", ThreatLevel.CRITICAL); }} onExit={stopMonitoring} onToggleMonitoring={() => isMonitoring ? stopMonitoring() : startMonitoring()} isMonitoring={isMonitoring} availableCameras={availableCameras} selectedCameraId={selectedCameraId} onCameraSelect={(id) => { setSelectedCameraId(id); startMonitoring(id); }} onToggleFullscreen={toggleFullscreen} isFullscreen={isFullscreen} errorStatus={errorStatus} isEmergencyAlarm={isEmergencyAlarm} />
+        <Dashboard 
+          stream={stream} 
+          videoRef={videoRef} 
+          detections={detections} 
+          logs={logs} 
+          violations={violations} 
+          stats={stats} 
+          isProcessing={isProcessing} 
+          onTriggerAlert={() => { initOrResumeAudio(); triggerViolation("MANUAL OVERRIDE", ThreatLevel.CRITICAL); }} 
+          onExit={stopMonitoring} 
+          onToggleMonitoring={() => isMonitoring ? stopMonitoring() : startMonitoring()} 
+          isMonitoring={isMonitoring} 
+          availableCameras={availableCameras} 
+          selectedCameraId={selectedCameraId} 
+          onCameraSelect={(id) => { setSelectedCameraId(id); startMonitoring(id); }} 
+          onToggleFullscreen={toggleFullscreen} 
+          isFullscreen={isFullscreen} 
+          errorStatus={errorStatus} 
+          isEmergencyAlarm={isEmergencyAlarm}
+          isFatigueActive={isFatigueActive}
+          isVehicleActive={isVehicleActive}
+          onToggleFatigue={() => setIsFatigueActive(!isFatigueActive)}
+          onToggleVehicle={() => setIsVehicleActive(!isVehicleActive)}
+        />
       )}
     </div>
   );

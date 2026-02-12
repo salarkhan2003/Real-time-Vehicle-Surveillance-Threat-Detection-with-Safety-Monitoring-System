@@ -25,22 +25,38 @@ interface DashboardProps {
   isFullscreen: boolean;
   errorStatus: string | null;
   isEmergencyAlarm: boolean;
+  isFatigueActive: boolean;
+  isVehicleActive: boolean;
+  onToggleFatigue: () => void;
+  onToggleVehicle: () => void;
 }
 
 const Dashboard: React.FC<DashboardProps> = ({ 
-  stream, videoRef, detections, logs, violations, stats, isProcessing, onTriggerAlert, onExit, onToggleMonitoring, isMonitoring, availableCameras, selectedCameraId, onCameraSelect, onToggleFullscreen, isFullscreen, errorStatus, isEmergencyAlarm
+  stream, videoRef, detections, logs, violations, stats, isProcessing, onTriggerAlert, onExit, onToggleMonitoring, isMonitoring, availableCameras, selectedCameraId, onCameraSelect, onToggleFullscreen, isFullscreen, errorStatus, isEmergencyAlarm, isFatigueActive, isVehicleActive, onToggleFatigue, onToggleVehicle
 }) => {
   const closestDistance = detections.length > 0 ? Math.min(...detections.map(d => d.distance)) : 10;
   const globalThreat = isEmergencyAlarm ? ThreatLevel.CRITICAL : closestDistance < 2.5 ? ThreatLevel.HIGH : ThreatLevel.LOW;
   const threatColor = globalThreat === ThreatLevel.CRITICAL ? 'bg-red-500 shadow-[0_0_20px_#ef4444]' : globalThreat === ThreatLevel.HIGH ? 'bg-orange-500' : 'bg-emerald-500';
+
+  // Determine emergency message based on active modes
+  const getEmergencyMessage = () => {
+    const messages = [];
+    if (isFatigueActive && stats.fatigue > 0.6) {
+      messages.push('FATIGUE DETECTED');
+    }
+    if (isVehicleActive && closestDistance < 1.5) {
+      messages.push('OBJECT IN BLIND SPOT');
+    }
+    return messages.join(' • ') || 'CRITICAL ALERT';
+  };
 
   return (
     <div className={`h-screen w-screen bg-[#050505] flex flex-col p-4 space-y-4 select-none animate-fade-in relative transition-colors duration-200 ${isEmergencyAlarm ? 'bg-red-950/20' : ''}`}>
       {isEmergencyAlarm && (
         <div className="absolute inset-0 pointer-events-none z-[100] border-[20px] border-red-600/50 animate-pulse flex items-center justify-center">
           <div className="bg-red-600 text-white px-12 py-6 rounded-3xl shadow-[0_0_100px_rgba(239,68,68,0.8)] border-4 border-white animate-bounce">
-            <h2 className="text-7xl font-black italic tracking-tighter">COLLISION WARNING</h2>
-            <p className="text-center font-black text-xl uppercase tracking-widest mt-2">FATIGUE DETECTED • OBJECT IN BLIND SPOT</p>
+            <h2 className="text-7xl font-black italic tracking-tighter">⚠️ CRITICAL ALERT</h2>
+            <p className="text-center font-black text-xl uppercase tracking-widest mt-2">{getEmergencyMessage()}</p>
           </div>
         </div>
       )}
@@ -64,6 +80,31 @@ const Dashboard: React.FC<DashboardProps> = ({
         </div>
 
         <div className="flex items-center space-x-3">
+          {/* Tactical Switchboard */}
+          <div className="flex items-center gap-2 bg-white/5 border border-white/10 rounded-2xl px-3 py-2">
+            <span className="text-[8px] font-black text-white/40 uppercase tracking-wider mr-1">Mode:</span>
+            <button 
+              onClick={onToggleFatigue}
+              className={`px-4 py-2 rounded-xl font-black text-[9px] tracking-wider uppercase transition-all active:scale-95 ${
+                isFatigueActive 
+                  ? 'bg-purple-600 text-white shadow-[0_0_15px_rgba(147,51,234,0.5)] border border-purple-400/50' 
+                  : 'bg-white/5 text-white/40 border border-white/10'
+              }`}
+            >
+              Driver Fatigue
+            </button>
+            <button 
+              onClick={onToggleVehicle}
+              className={`px-4 py-2 rounded-xl font-black text-[9px] tracking-wider uppercase transition-all active:scale-95 ${
+                isVehicleActive 
+                  ? 'bg-blue-600 text-white shadow-[0_0_15px_rgba(34,197,94,0.5)] border border-blue-400/50' 
+                  : 'bg-white/5 text-white/40 border border-white/10'
+              }`}
+            >
+              Vehicle Surveillance
+            </button>
+          </div>
+          <div className="h-8 w-px bg-white/10" />
           <button onClick={onToggleFullscreen} className="p-3 bg-white/5 hover:bg-white/10 rounded-2xl transition-all border border-white/5 text-white/60 active:scale-90">{isFullscreen ? 'EXIT_FULL' : 'ENTER_FULL'}</button>
           <select value={selectedCameraId} onChange={(e) => onCameraSelect(e.target.value)} className="bg-white/5 border border-white/10 text-[10px] font-bold uppercase rounded-xl px-4 py-2.5 text-white/80 outline-none">
             {availableCameras.map(cam => (<option key={cam.deviceId} value={cam.deviceId} className="bg-slate-900">{cam.label || 'Optic 01'}</option>))}
@@ -76,7 +117,14 @@ const Dashboard: React.FC<DashboardProps> = ({
       <div className="flex-1 grid grid-cols-12 gap-4 min-h-0">
         <div className="col-span-12 lg:col-span-9 flex flex-col min-h-0">
           <div className="relative flex-1 bg-black rounded-[2.5rem] overflow-hidden border border-white/10 shadow-2xl">
-            <CameraFeed stream={stream} videoRef={videoRef} detections={detections} isProcessing={isProcessing} />
+            <CameraFeed 
+              stream={stream} 
+              videoRef={videoRef} 
+              detections={detections} 
+              isProcessing={isProcessing}
+              isFatigueActive={isFatigueActive}
+              isVehicleActive={isVehicleActive}
+            />
             <div className="absolute bottom-0 left-0 right-0 p-10 bg-gradient-to-t from-black via-black/40 to-transparent flex justify-between items-end pointer-events-none">
               <div className="space-y-2">
                 <p className="text-[10px] text-white/30 font-black uppercase tracking-[0.4em]">Proximity Matrix</p>
