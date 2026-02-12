@@ -70,8 +70,13 @@
   }
 }
 </script>
+<script>
+  // Shim process.env for production builds/Vercel where it is not natively defined in the browser
+  window.process = window.process || { env: {} };
+</script>
 </head>
 <body>
     <div id="root"></div>
+    <script type="module" src="./index.tsx"></script>
 </body>
 </html>
