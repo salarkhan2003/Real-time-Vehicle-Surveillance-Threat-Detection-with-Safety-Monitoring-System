@@ -18,12 +18,11 @@ const App: React.FC = () => {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [errorStatus, setErrorStatus] = useState<string | null>(null);
   const [isEmergencyAlarm, setIsEmergencyAlarm] = useState(false);
-  const [inferenceInterval, setInferenceInterval] = useState(5000); // Start at 5s for free-tier safety
   const [stats, setStats] = useState<SystemStats>({
     detectionCount: 0,
     speed: 0,
     fatigue: 0.1,
-    zone: "Industrial Zone A",
+    zone: "Safety Sector Delta",
     helmetStatus: true
   });
 
@@ -31,7 +30,6 @@ const App: React.FC = () => {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
   const alarmIntervalRef = useRef<number | null>(null);
-  const quotaBackoffRef = useRef(0);
 
   const initOrResumeAudio = useCallback(() => {
     if (!audioCtxRef.current) {
@@ -49,22 +47,16 @@ const App: React.FC = () => {
       const ctx = initOrResumeAudio();
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
-      
       osc.type = type;
       osc.frequency.setValueAtTime(freq, ctx.currentTime);
-      
       gain.gain.setValueAtTime(0, ctx.currentTime);
       gain.gain.linearRampToValueAtTime(vol, ctx.currentTime + 0.01);
       gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + dur);
-      
       osc.connect(gain);
       gain.connect(ctx.destination);
-      
       osc.start();
       osc.stop(ctx.currentTime + dur);
-    } catch (e) {
-      console.warn("Audio Playback Blocked", e);
-    }
+    } catch (e) {}
   }, [initOrResumeAudio]);
 
   useEffect(() => {
@@ -74,40 +66,27 @@ const App: React.FC = () => {
         setTimeout(() => playTacticalBeep(1800, 'square', 0.1, 0.3), 100);
       }, 250);
     } else {
-      if (alarmIntervalRef.current) {
-        clearInterval(alarmIntervalRef.current);
-        alarmIntervalRef.current = null;
-      }
+      if (alarmIntervalRef.current) { clearInterval(alarmIntervalRef.current); alarmIntervalRef.current = null; }
     }
-    return () => {
-      if (alarmIntervalRef.current) clearInterval(alarmIntervalRef.current);
-    };
+    return () => { if (alarmIntervalRef.current) clearInterval(alarmIntervalRef.current); };
   }, [isEmergencyAlarm, isMonitoring, playTacticalBeep]);
 
   const fetchCameras = useCallback(async () => {
     try {
       const devices = await navigator.mediaDevices.enumerateDevices();
       let videoDevices = devices.filter(d => d.kind === 'videoinput');
-      
       if (videoDevices.length > 0 && !videoDevices[0].label) {
         const tempStream = await navigator.mediaDevices.getUserMedia({ video: true });
         tempStream.getTracks().forEach(t => t.stop());
         const refreshedDevices = await navigator.mediaDevices.enumerateDevices();
         videoDevices = refreshedDevices.filter(d => d.kind === 'videoinput');
       }
-
       setAvailableCameras(videoDevices);
-      if (videoDevices.length > 0 && !selectedCameraId) {
-        setSelectedCameraId(videoDevices[0].deviceId);
-      }
-    } catch (err) {
-      console.error("Camera enumeration error:", err);
-    }
+      if (videoDevices.length > 0 && !selectedCameraId) setSelectedCameraId(videoDevices[0].deviceId);
+    } catch (err) {}
   }, [selectedCameraId]);
 
-  useEffect(() => {
-    fetchCameras();
-  }, [fetchCameras]);
+  useEffect(() => { fetchCameras(); }, [fetchCameras]);
 
   const addLog = useCallback((msg: string) => {
     const time = new Date().toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
@@ -118,21 +97,12 @@ const App: React.FC = () => {
     const now = Date.now();
     const key = `${type}-${severity}`;
     if (lastViolationTimeRef.current[key] && now - lastViolationTimeRef.current[key] < 3000) return;
-    
     lastViolationTimeRef.current[key] = now;
-    
     setTimeout(() => {
-      const newViolation: Violation = {
-        id: Date.now(),
-        timestamp: new Date().toLocaleTimeString(),
-        type,
-        severity
-      };
+      const newViolation: Violation = { id: Date.now(), timestamp: new Date().toLocaleTimeString(), type, severity };
       setViolations(prev => [newViolation, ...prev].slice(0, 10));
       addLog(`ALARM: ${type}`);
-      if (severity === ThreatLevel.CRITICAL && !isEmergencyAlarm) {
-        playTacticalBeep(440, 'square', 0.3, 0.2);
-      }
+      if (severity === ThreatLevel.CRITICAL && !isEmergencyAlarm) playTacticalBeep(440, 'square', 0.3, 0.2);
     }, 0);
   }, [addLog, playTacticalBeep, isEmergencyAlarm]);
 
@@ -149,24 +119,17 @@ const App: React.FC = () => {
   const startMonitoring = useCallback(async (deviceId?: string) => {
     initOrResumeAudio();
     setErrorStatus(null);
-    quotaBackoffRef.current = 0;
-    setInferenceInterval(5000); // Reset interval on restart
     try {
       if (stream) stream.getTracks().forEach(track => track.stop());
       const targetId = deviceId || selectedCameraId;
-      const constraints = {
-        video: targetId ? { deviceId: { exact: targetId }, width: { ideal: 1280 }, height: { ideal: 720 } } : { video: true }
-      };
+      const constraints = { video: targetId ? { deviceId: { exact: targetId }, width: { ideal: 1280 }, height: { ideal: 720 } } : { video: true } };
       const s = await navigator.mediaDevices.getUserMedia(constraints);
       setStream(s);
       setIsMonitoring(true);
       setView('monitor');
       addLog("SYSTEM: Neural optics active.");
       playTacticalBeep(1200, 'sine', 0.1, 0.1);
-    } catch (err) {
-      addLog("ERROR: Camera link failed.");
-      console.error(err);
-    }
+    } catch (err) { addLog("ERROR: Camera link failed."); }
   }, [selectedCameraId, stream, addLog, playTacticalBeep, initOrResumeAudio]);
 
   const runInference = useCallback(async () => {
@@ -177,27 +140,25 @@ const App: React.FC = () => {
     canvas.height = videoRef.current.videoHeight || 480;
     const ctx = canvas.getContext('2d');
     if (!ctx || canvas.width === 0) return;
-
     ctx.drawImage(videoRef.current, 0, 0);
-    const base64Data = canvas.toDataURL('image/jpeg', 0.5).split(',')[1];
+    const base64Data = canvas.toDataURL('image/jpeg', 0.6).split(',')[1];
 
     setIsProcessing(true);
     try {
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-      // Special Multi-Subject / Low-Light Optimized Prompt
-      const prompt = `Act as an ELITE Specialized Industrial Safety Model (Advanced Neural Vision).
-      1. SENSITIVITY: Detect EVERY Person, Vehicle, Animal, and Obstacle even in poor lighting or high occlusion.
-      2. BIOMETRICS: Score driver fatigue (0.0=Active, 1.0=Microsleep/Closed Eyes). Be precise.
-      3. COMPLIANCE: Verify Safety Helmet (PPE) for every person.
-      4. SPATIAL: Calculate real-world distance (meters) and normalized bbox [x, y, w, h] (0-1000).
-      5. ROBUSTNESS: Handle multiple subjects simultaneously.
+      // Ultra-specific instruction for Gemini Flash to maximize spatial awareness
+      const prompt = `Task: Specialized Safety Detection.
+      1. SENSITIVITY: Detect EVERY [person, vehicle, animal, obstacle] visible.
+      2. COORDINATES: Normalized bounding boxes [x, y, w, h] from 0 to 1000.
+      3. BIOMETRICS: Rate driver fatigue (0.0=awake, 1.0=asleep).
+      4. PPE: Set hasHelmet=true for persons with head protection.
+      5. SPATIAL: Distance in meters.
       OUTPUT JSON ONLY.`;
 
       const response = await ai.models.generateContent({
         model: 'gemini-3-flash-preview',
         contents: [{ parts: [{ inlineData: { data: base64Data, mimeType: "image/jpeg" } }, { text: prompt }] }],
         config: {
-          thinkingConfig: { thinkingBudget: 0 },
           responseMimeType: "application/json",
           responseSchema: {
             type: Type.OBJECT,
@@ -223,12 +184,13 @@ const App: React.FC = () => {
         }
       });
 
-      const result = JSON.parse(response.text || "{}");
+      // Cleanup response text (remove markdown if model adds it)
+      const cleanJson = response.text.replace(/```json|```/gi, '').trim();
+      const result = JSON.parse(cleanJson || "{}");
       setErrorStatus(null);
-      quotaBackoffRef.current = 0; // Success, reset backoff
 
       const mappedDetections: Detection[] = (result.detections || [])
-        .filter((d: any) => d.confidence > 0.35) // Increased threshold for higher accuracy
+        .filter((d: any) => d.confidence > 0.15) // High sensitivity for low light
         .map((d: any, i: number) => ({
           id: `det-${Date.now()}-${i}`,
           label: d.label.toUpperCase(),
@@ -243,7 +205,12 @@ const App: React.FC = () => {
         }));
 
       setDetections(mappedDetections);
-      const closestDist = mappedDetections.reduce((min, d) => d.distance < min ? d.distance : min, 10);
+      addLog(`INF: Detected ${mappedDetections.length} entities.`);
+
+      const closestDist = mappedDetections.length > 0 
+        ? Math.min(...mappedDetections.map(d => d.distance)) 
+        : 10;
+
       const currentFatigue = result.fatigue ?? stats.fatigue;
       
       setStats(prev => ({
@@ -254,83 +221,45 @@ const App: React.FC = () => {
         helmetStatus: !mappedDetections.some(d => d.label === 'PERSON' && (d as any).hasHelmet === false)
       }));
 
-      if (currentFatigue > 0.7 && closestDist < 2.0) {
+      if (currentFatigue > 0.6 || closestDist < 1.5) {
         if (!isEmergencyAlarm) setIsEmergencyAlarm(true);
       } else {
         if (isEmergencyAlarm) setIsEmergencyAlarm(false);
       }
 
-      mappedDetections.forEach(d => {
-        if (d.distance < 1.0) triggerViolation(`CRITICAL COLLISION: ${d.label}`, ThreatLevel.CRITICAL);
+      mappedDetections.forEach(d => { 
+        if (d.distance < 1.0) triggerViolation(`IMMINENT: ${d.label}`, ThreatLevel.CRITICAL); 
       });
-      
+
     } catch (err: any) {
-      if (err.message?.includes('429') || err.message?.includes('RESOURCE_EXHAUSTED')) {
-        setErrorStatus("QUOTA EXCEEDED - AUTO-BACKOFF ENGAGED");
-        setInferenceInterval(prev => Math.min(prev + 5000, 30000)); // Adaptive backoff
-        quotaBackoffRef.current++;
-        if (quotaBackoffRef.current > 3) {
-            setIsMonitoring(false);
-            addLog("SYSTEM HALTED: Recurring Quota Errors. Manual reset required.");
-        }
+      if (err.message?.includes('429')) {
+        setErrorStatus("QUOTA EXCEEDED - CHECK PLAN");
+        addLog("SYSTEM: API Limit reached.");
+      } else {
+        addLog("SYSTEM: Processing Error.");
       }
       console.error(err);
-    } finally {
-      setIsProcessing(false);
-    }
+    } finally { setIsProcessing(false); }
   }, [isProcessing, isMonitoring, triggerViolation, stats.fatigue, isEmergencyAlarm, addLog]);
 
   useEffect(() => {
     if (isMonitoring) {
-      const timer = setInterval(runInference, inferenceInterval); 
+      const timer = setInterval(runInference, 4000); // 4s for safety
       return () => clearInterval(timer);
     }
-  }, [isMonitoring, runInference, inferenceInterval]);
+  }, [isMonitoring, runInference]);
 
   const toggleFullscreen = useCallback(() => {
-    if (!document.fullscreenElement) {
-      document.documentElement.requestFullscreen().then(() => setIsFullscreen(true));
-    } else {
-      document.exitFullscreen().then(() => setIsFullscreen(false));
-    }
+    if (!document.fullscreenElement) document.documentElement.requestFullscreen().then(() => setIsFullscreen(true));
+    else document.exitFullscreen().then(() => setIsFullscreen(false));
   }, []);
 
   return (
     <div className="h-screen w-screen bg-black text-white overflow-hidden font-sans">
       {view === 'home' ? (
-        <HomeDashboard 
-          stats={stats} 
-          violations={violations} 
-          onStart={() => startMonitoring()} 
-          availableCameras={availableCameras}
-          selectedCameraId={selectedCameraId}
-          onCameraSelect={setSelectedCameraId}
-          onRefreshCameras={fetchCameras}
-        />
+        <HomeDashboard stats={stats} violations={violations} onStart={() => startMonitoring()} availableCameras={availableCameras} selectedCameraId={selectedCameraId} onCameraSelect={setSelectedCameraId} onRefreshCameras={fetchCameras} />
       ) : (
-        <Dashboard 
-          stream={stream}
-          videoRef={videoRef}
-          detections={detections}
-          logs={logs}
-          violations={violations}
-          stats={stats}
-          isProcessing={isProcessing}
-          onTriggerAlert={() => {
-            initOrResumeAudio();
-            triggerViolation("MANUAL OVERRIDE", ThreatLevel.CRITICAL);
-          }}
-          onExit={stopMonitoring}
-          onToggleMonitoring={() => isMonitoring ? stopMonitoring() : startMonitoring()}
-          isMonitoring={isMonitoring}
-          availableCameras={availableCameras}
-          selectedCameraId={selectedCameraId}
-          onCameraSelect={(id) => { setSelectedCameraId(id); startMonitoring(id); }}
-          onToggleFullscreen={toggleFullscreen}
-          isFullscreen={isFullscreen}
-          errorStatus={errorStatus}
-          isEmergencyAlarm={isEmergencyAlarm}
-        />
+        <Dashboard stream={stream} videoRef={videoRef} detections={detections} logs={logs} violations={violations} stats={stats} isProcessing={isProcessing} onTriggerAlert={() => { initOrResumeAudio(); triggerViolation("MANUAL OVERRIDE", ThreatLevel.CRITICAL); }} onExit={stopMonitoring} onToggleMonitoring={() => isMonitoring ? stopMonitoring() : startMonitoring()} isMonitoring={isMonitoring} availableCameras={availableCameras} selectedCameraId={selectedCameraId} onCameraSelect={(id) => { setSelectedCameraId(id); startMonitoring(id); }} onToggleFullscreen={toggleFullscreen} isFullscreen={isFullscreen} errorStatus={errorStatus} isEmergencyAlarm={isEmergencyAlarm} />
       )}
     </div>
   );
