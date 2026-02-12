@@ -9,29 +9,27 @@ interface HomeDashboardProps {
   availableCameras: MediaDeviceInfo[];
   selectedCameraId: string;
   onCameraSelect: (id: string) => void;
+  onRefreshCameras: () => void;
 }
 
 const HomeDashboard: React.FC<HomeDashboardProps> = ({ 
   stats, 
-  violations, 
   onStart, 
   availableCameras, 
   selectedCameraId, 
-  onCameraSelect 
+  onCameraSelect,
+  onRefreshCameras
 }) => {
   const currentTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   const currentDate = new Date().toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' });
 
   return (
     <div className="relative h-full w-full bg-black overflow-hidden flex flex-col items-center justify-between p-10">
-      {/* iOS 18 Animated Wallpaper Effect */}
       <div className="absolute top-0 left-0 w-full h-full z-0 overflow-hidden pointer-events-none">
         <div className="absolute top-[10%] left-[20%] w-[60%] h-[60%] bg-blue-600/30 blur-[150px] rounded-full animate-pulse" />
         <div className="absolute bottom-[20%] right-[10%] w-[50%] h-[50%] bg-purple-600/20 blur-[150px] rounded-full" />
-        <div className="absolute top-[50%] left-[-10%] w-[40%] h-[40%] bg-pink-600/10 blur-[150px] rounded-full" />
       </div>
 
-      {/* iOS 18 Lock Screen Time */}
       <div className="w-full max-w-6xl flex flex-col items-center space-y-1 z-10 animate-fade-in">
         <p className="text-xl font-semibold text-white/80 tracking-wide uppercase">{currentDate}</p>
         <h1 className="text-[10rem] font-bold tracking-tighter text-white leading-none drop-shadow-[0_0_20px_rgba(255,255,255,0.2)]">
@@ -39,10 +37,7 @@ const HomeDashboard: React.FC<HomeDashboardProps> = ({
         </h1>
       </div>
 
-      {/* iOS Control Center Styled Grid */}
       <div className="w-full max-w-6xl grid grid-cols-1 md:grid-cols-4 lg:grid-cols-4 gap-6 z-10">
-        
-        {/* Helmet/Safety Widget */}
         <div className="col-span-1 bg-white/10 backdrop-blur-3xl border border-white/20 p-6 rounded-[2.5rem] shadow-2xl flex flex-col justify-between aspect-square transition-transform hover:scale-[1.02]">
           <div className="flex justify-between items-start">
             <div className={`p-4 rounded-2xl ${stats.helmetStatus ? 'bg-emerald-500/20' : 'bg-red-500/20'}`}>
@@ -61,7 +56,6 @@ const HomeDashboard: React.FC<HomeDashboardProps> = ({
           </div>
         </div>
 
-        {/* Telemetry Stats */}
         <div className="col-span-1 md:col-span-2 bg-white/10 backdrop-blur-3xl border border-white/20 p-8 rounded-[2.5rem] shadow-2xl flex flex-col justify-between transition-transform hover:scale-[1.02]">
           <div className="flex justify-between items-center mb-6">
             <h3 className="text-sm font-black text-white/40 uppercase tracking-[0.3em]">Neural Telemetry</h3>
@@ -79,55 +73,62 @@ const HomeDashboard: React.FC<HomeDashboardProps> = ({
               </p>
             </div>
           </div>
-          <div className="mt-6 p-4 bg-white/5 rounded-2xl flex justify-between items-center">
-             <span className="text-white/60 text-xs font-bold uppercase">System Active For</span>
-             <span className="text-white font-mono text-xs">02:45:12</span>
-          </div>
         </div>
 
-        {/* Camera Selector (iOS App List Style) */}
-        <div className="col-span-1 bg-white/10 backdrop-blur-3xl border border-white/20 p-6 rounded-[2.5rem] shadow-2xl flex flex-col transition-transform hover:scale-[1.02]">
+        <div className={`col-span-1 bg-white/10 backdrop-blur-3xl border p-6 rounded-[2.5rem] shadow-2xl flex flex-col transition-transform hover:scale-[1.02] ${availableCameras.length === 0 ? 'border-red-500/50' : 'border-white/20'}`}>
           <div className="flex justify-between items-center mb-4">
             <h3 className="text-[10px] font-black text-white/40 uppercase tracking-[0.2em]">Sensor Select</h3>
-            <svg className="w-5 h-5 text-white/40" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
-            </svg>
+            <button onClick={onRefreshCameras} className="p-1.5 hover:bg-white/10 rounded-lg transition-colors text-white/40">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+            </button>
           </div>
+          
           <div className="flex-1 overflow-y-auto space-y-2 pr-1 custom-scrollbar">
-            {availableCameras.map(cam => (
-              <button
-                key={cam.deviceId}
-                onClick={() => onCameraSelect(cam.deviceId)}
-                className={`w-full flex items-center gap-3 p-3 rounded-2xl transition-all ${selectedCameraId === cam.deviceId ? 'bg-blue-600 text-white shadow-[0_10px_20px_rgba(37,99,235,0.4)] scale-[1.05]' : 'bg-white/5 text-white/60 hover:bg-white/10'}`}
-              >
-                <div className={`w-2 h-2 rounded-full ${selectedCameraId === cam.deviceId ? 'bg-white' : 'bg-white/20'}`} />
-                <span className="text-xs font-bold truncate">{cam.label || 'Generic Camera'}</span>
-              </button>
-            ))}
-            {availableCameras.length === 0 && <p className="text-white/20 text-center text-[10px] mt-10 uppercase font-black">Scanning for devices...</p>}
+            {availableCameras.length > 0 ? (
+              availableCameras.map(cam => (
+                <button
+                  key={cam.deviceId}
+                  onClick={() => onCameraSelect(cam.deviceId)}
+                  className={`w-full flex items-center gap-3 p-3 rounded-2xl transition-all ${selectedCameraId === cam.deviceId ? 'bg-blue-600 text-white shadow-[0_10px_20px_rgba(37,99,235,0.4)]' : 'bg-white/5 text-white/60 hover:bg-white/10'}`}
+                >
+                  <div className={`w-2 h-2 rounded-full ${selectedCameraId === cam.deviceId ? 'bg-white' : 'bg-white/20'}`} />
+                  <span className="text-xs font-bold truncate">{cam.label || 'Optical Sensor'}</span>
+                </button>
+              ))
+            ) : (
+              <div className="h-full flex flex-col items-center justify-center text-center p-4">
+                <p className="text-red-400 text-[10px] font-black uppercase mb-2">No Sensors Detected</p>
+                <button 
+                  onClick={onRefreshCameras}
+                  className="text-[9px] bg-white/5 border border-white/10 px-3 py-1.5 rounded-lg hover:bg-white/10 transition-colors uppercase font-bold text-white/60"
+                >
+                  Request Access
+                </button>
+              </div>
+            )}
           </div>
         </div>
       </div>
 
-      {/* iOS 18 Large Dynamic Start Button */}
       <div className="w-full max-w-6xl z-10 pb-6 flex justify-center">
         <button
           onClick={onStart}
-          className="group relative flex items-center justify-center bg-white text-black px-16 py-8 rounded-[3rem] font-black text-3xl tracking-tighter shadow-[0_20px_60px_rgba(255,255,255,0.15)] transition-all hover:scale-105 active:scale-95"
+          disabled={availableCameras.length === 0}
+          className={`group relative flex items-center justify-center px-16 py-8 rounded-[3rem] font-black text-3xl tracking-tighter shadow-[0_20px_60px_rgba(255,255,255,0.15)] transition-all hover:scale-105 active:scale-95 ${availableCameras.length === 0 ? 'bg-white/10 text-white/20 cursor-not-allowed' : 'bg-white text-black'}`}
         >
           <span className="relative z-10 flex items-center gap-5">
             INITIATE MONITORING
-            <div className="bg-black text-white p-2 rounded-full">
+            <div className={`p-2 rounded-full ${availableCameras.length === 0 ? 'bg-white/5' : 'bg-black text-white'}`}>
               <svg className="w-8 h-8 group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M13 7l5 5m0 0l-5 5m5-5H6" />
               </svg>
             </div>
           </span>
-          <div className="absolute inset-0 bg-gradient-to-r from-blue-400 via-purple-400 to-pink-400 opacity-0 group-hover:opacity-10 rounded-[3rem] transition-opacity" />
         </button>
       </div>
 
-      {/* Violation Ticker Footnote */}
       <div className="w-full max-w-6xl z-10 flex justify-center pb-2">
          <p className="text-white/20 text-[10px] font-black tracking-[0.5em] uppercase">
            GuardVision Artificial Intelligence Security Protocol Active

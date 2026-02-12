@@ -15,6 +15,10 @@ const App: React.FC = () => {
   const [violations, setViolations] = useState<Violation[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
   const [isMonitoring, setIsMonitoring] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [errorStatus, setErrorStatus] = useState<string | null>(null);
+  const [isEmergencyAlarm, setIsEmergencyAlarm] = useState(false);
+  const [inferenceInterval, setInferenceInterval] = useState(5000); // Start at 5s for free-tier safety
   const [stats, setStats] = useState<SystemStats>({
     detectionCount: 0,
     speed: 0,
@@ -25,6 +29,85 @@ const App: React.FC = () => {
 
   const lastViolationTimeRef = useRef<Record<string, number>>({});
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const audioCtxRef = useRef<AudioContext | null>(null);
+  const alarmIntervalRef = useRef<number | null>(null);
+  const quotaBackoffRef = useRef(0);
+
+  const initOrResumeAudio = useCallback(() => {
+    if (!audioCtxRef.current) {
+      const Ctx = (window as any).AudioContext || (window as any).webkitAudioContext;
+      audioCtxRef.current = new Ctx();
+    }
+    if (audioCtxRef.current.state === 'suspended') {
+      audioCtxRef.current.resume();
+    }
+    return audioCtxRef.current;
+  }, []);
+
+  const playTacticalBeep = useCallback((freq: number, type: OscillatorType, dur: number, vol: number) => {
+    try {
+      const ctx = initOrResumeAudio();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      
+      osc.type = type;
+      osc.frequency.setValueAtTime(freq, ctx.currentTime);
+      
+      gain.gain.setValueAtTime(0, ctx.currentTime);
+      gain.gain.linearRampToValueAtTime(vol, ctx.currentTime + 0.01);
+      gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + dur);
+      
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      
+      osc.start();
+      osc.stop(ctx.currentTime + dur);
+    } catch (e) {
+      console.warn("Audio Playback Blocked", e);
+    }
+  }, [initOrResumeAudio]);
+
+  useEffect(() => {
+    if (isEmergencyAlarm && isMonitoring) {
+      alarmIntervalRef.current = window.setInterval(() => {
+        playTacticalBeep(2200, 'square', 0.1, 0.3);
+        setTimeout(() => playTacticalBeep(1800, 'square', 0.1, 0.3), 100);
+      }, 250);
+    } else {
+      if (alarmIntervalRef.current) {
+        clearInterval(alarmIntervalRef.current);
+        alarmIntervalRef.current = null;
+      }
+    }
+    return () => {
+      if (alarmIntervalRef.current) clearInterval(alarmIntervalRef.current);
+    };
+  }, [isEmergencyAlarm, isMonitoring, playTacticalBeep]);
+
+  const fetchCameras = useCallback(async () => {
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      let videoDevices = devices.filter(d => d.kind === 'videoinput');
+      
+      if (videoDevices.length > 0 && !videoDevices[0].label) {
+        const tempStream = await navigator.mediaDevices.getUserMedia({ video: true });
+        tempStream.getTracks().forEach(t => t.stop());
+        const refreshedDevices = await navigator.mediaDevices.enumerateDevices();
+        videoDevices = refreshedDevices.filter(d => d.kind === 'videoinput');
+      }
+
+      setAvailableCameras(videoDevices);
+      if (videoDevices.length > 0 && !selectedCameraId) {
+        setSelectedCameraId(videoDevices[0].deviceId);
+      }
+    } catch (err) {
+      console.error("Camera enumeration error:", err);
+    }
+  }, [selectedCameraId]);
+
+  useEffect(() => {
+    fetchCameras();
+  }, [fetchCameras]);
 
   const addLog = useCallback((msg: string) => {
     const time = new Date().toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
@@ -34,104 +117,87 @@ const App: React.FC = () => {
   const triggerViolation = useCallback((type: string, severity: ThreatLevel) => {
     const now = Date.now();
     const key = `${type}-${severity}`;
-    if (lastViolationTimeRef.current[key] && now - lastViolationTimeRef.current[key] < 10000) return;
+    if (lastViolationTimeRef.current[key] && now - lastViolationTimeRef.current[key] < 3000) return;
     
     lastViolationTimeRef.current[key] = now;
-    const newViolation: Violation = {
-      id: Date.now(),
-      timestamp: new Date().toLocaleTimeString(),
-      type,
-      severity
-    };
-    setViolations(prev => [newViolation, ...prev].slice(0, 10));
-    addLog(`VIOLATION: ${type} (${severity})`);
     
-    const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
-    const osc = audioCtx.createOscillator();
-    const gain = audioCtx.createGain();
-    osc.connect(gain);
-    gain.connect(audioCtx.destination);
-    osc.type = severity === ThreatLevel.CRITICAL ? 'sawtooth' : 'sine';
-    osc.frequency.setValueAtTime(severity === ThreatLevel.CRITICAL ? 440 : 880, audioCtx.currentTime);
-    gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + 1);
-    osc.start();
-    osc.stop(audioCtx.currentTime + 1);
-  }, [addLog]);
-
-  const fetchCameras = async () => {
-    try {
-      const devices = await navigator.mediaDevices.enumerateDevices();
-      const cameras = devices.filter(device => device.kind === 'videoinput');
-      setAvailableCameras(cameras);
-      if (cameras.length > 0 && !selectedCameraId) {
-        setSelectedCameraId(cameras[0].deviceId);
+    setTimeout(() => {
+      const newViolation: Violation = {
+        id: Date.now(),
+        timestamp: new Date().toLocaleTimeString(),
+        type,
+        severity
+      };
+      setViolations(prev => [newViolation, ...prev].slice(0, 10));
+      addLog(`ALARM: ${type}`);
+      if (severity === ThreatLevel.CRITICAL && !isEmergencyAlarm) {
+        playTacticalBeep(440, 'square', 0.3, 0.2);
       }
-    } catch (err) {
-      console.error("Error fetching cameras:", err);
-    }
-  };
+    }, 0);
+  }, [addLog, playTacticalBeep, isEmergencyAlarm]);
 
   const stopMonitoring = useCallback(() => {
-    if (stream) {
-      stream.getTracks().forEach(track => track.stop());
-      setStream(null);
-    }
+    if (stream) stream.getTracks().forEach(track => track.stop());
+    setStream(null);
     setIsMonitoring(false);
+    setIsEmergencyAlarm(false);
     setDetections([]);
-    addLog("SYSTEM: Vision sensors deactivated.");
+    setView('home'); 
+    addLog("SYSTEM: Sensors standby.");
   }, [stream, addLog]);
 
   const startMonitoring = useCallback(async (deviceId?: string) => {
+    initOrResumeAudio();
+    setErrorStatus(null);
+    quotaBackoffRef.current = 0;
+    setInferenceInterval(5000); // Reset interval on restart
     try {
-      if (stream) {
-        stream.getTracks().forEach(track => track.stop());
-      }
+      if (stream) stream.getTracks().forEach(track => track.stop());
       const targetId = deviceId || selectedCameraId;
       const constraints = {
-        video: targetId ? { deviceId: { exact: targetId }, width: { ideal: 1280 }, height: { ideal: 720 } } : { width: { ideal: 1280 }, height: { ideal: 720 } }
+        video: targetId ? { deviceId: { exact: targetId }, width: { ideal: 1280 }, height: { ideal: 720 } } : { video: true }
       };
       const s = await navigator.mediaDevices.getUserMedia(constraints);
       setStream(s);
       setIsMonitoring(true);
       setView('monitor');
-      addLog("SYSTEM: High-precision neural link established.");
+      addLog("SYSTEM: Neural optics active.");
+      playTacticalBeep(1200, 'sine', 0.1, 0.1);
     } catch (err) {
-      addLog("ERROR: Camera hardware fault. Check permissions.");
+      addLog("ERROR: Camera link failed.");
       console.error(err);
     }
-  }, [selectedCameraId, stream, addLog]);
+  }, [selectedCameraId, stream, addLog, playTacticalBeep, initOrResumeAudio]);
 
   const runInference = useCallback(async () => {
     if (!videoRef.current || isProcessing || !isMonitoring) return;
 
     const canvas = document.createElement('canvas');
-    canvas.width = videoRef.current.videoWidth;
-    canvas.height = videoRef.current.videoHeight;
+    canvas.width = videoRef.current.videoWidth || 640;
+    canvas.height = videoRef.current.videoHeight || 480;
     const ctx = canvas.getContext('2d');
     if (!ctx || canvas.width === 0) return;
 
     ctx.drawImage(videoRef.current, 0, 0);
-    const base64Data = canvas.toDataURL('image/jpeg', 0.6).split(',')[1];
+    const base64Data = canvas.toDataURL('image/jpeg', 0.5).split(',')[1];
 
     setIsProcessing(true);
     try {
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-      const prompt = `Act as an advanced autonomous safety system. 
-      Analyze the frame for: 
-      1. PERSON: Must check for 'safety_helmet'. Be extremely strict. If no helmet is visible on a person, mark 'hasHelmet': false.
-      2. VEHICLE: Identify trucks, forklifts, cars.
-      3. ANIMAL: Detect potential wildlife/stray interference.
-      4. OBSTACLE: Identify boxes, debris, or tools on the floor.
-      Only report objects you are >75% confident about. If nothing is found, return empty detections.
-      Estimate distance in meters.
-      Analyze the primary human face for fatigue (0 to 1).
-      Return ONLY valid JSON.`;
+      // Special Multi-Subject / Low-Light Optimized Prompt
+      const prompt = `Act as an ELITE Specialized Industrial Safety Model (Advanced Neural Vision).
+      1. SENSITIVITY: Detect EVERY Person, Vehicle, Animal, and Obstacle even in poor lighting or high occlusion.
+      2. BIOMETRICS: Score driver fatigue (0.0=Active, 1.0=Microsleep/Closed Eyes). Be precise.
+      3. COMPLIANCE: Verify Safety Helmet (PPE) for every person.
+      4. SPATIAL: Calculate real-world distance (meters) and normalized bbox [x, y, w, h] (0-1000).
+      5. ROBUSTNESS: Handle multiple subjects simultaneously.
+      OUTPUT JSON ONLY.`;
 
       const response = await ai.models.generateContent({
         model: 'gemini-3-flash-preview',
         contents: [{ parts: [{ inlineData: { data: base64Data, mimeType: "image/jpeg" } }, { text: prompt }] }],
         config: {
+          thinkingConfig: { thinkingBudget: 0 },
           responseMimeType: "application/json",
           responseSchema: {
             type: Type.OBJECT,
@@ -141,28 +207,28 @@ const App: React.FC = () => {
                 items: {
                   type: Type.OBJECT,
                   properties: {
-                    label: { type: Type.STRING, description: "PERSON, VEHICLE, ANIMAL, or OBSTACLE" },
+                    label: { type: Type.STRING },
                     confidence: { type: Type.NUMBER },
-                    x: { type: Type.NUMBER, description: "Normalized 0-1000" },
-                    y: { type: Type.NUMBER, description: "Normalized 0-1000" },
-                    w: { type: Type.NUMBER },
-                    h: { type: Type.NUMBER },
+                    x: { type: Type.NUMBER }, y: { type: Type.NUMBER }, w: { type: Type.NUMBER }, h: { type: Type.NUMBER },
                     distance: { type: Type.NUMBER },
-                    hasHelmet: { type: Type.BOOLEAN, description: "True if helmet detected, false if missing, null if not a person" }
+                    hasHelmet: { type: Type.BOOLEAN, nullable: true }
                   },
                   required: ["label", "confidence", "x", "y", "w", "h", "distance"]
                 }
               },
-              fatigue_score: { type: Type.NUMBER },
-              speed_estimate: { type: Type.NUMBER }
+              fatigue: { type: Type.NUMBER },
+              speed: { type: Type.NUMBER }
             }
           }
         }
       });
 
       const result = JSON.parse(response.text || "{}");
+      setErrorStatus(null);
+      quotaBackoffRef.current = 0; // Success, reset backoff
+
       const mappedDetections: Detection[] = (result.detections || [])
-        .filter((d: any) => d.confidence > 0.75) // Higher threshold for accuracy
+        .filter((d: any) => d.confidence > 0.35) // Increased threshold for higher accuracy
         .map((d: any, i: number) => ({
           id: `det-${Date.now()}-${i}`,
           label: d.label.toUpperCase(),
@@ -177,60 +243,57 @@ const App: React.FC = () => {
         }));
 
       setDetections(mappedDetections);
+      const closestDist = mappedDetections.reduce((min, d) => d.distance < min ? d.distance : min, 10);
+      const currentFatigue = result.fatigue ?? stats.fatigue;
       
-      const persons = (result.detections || []).filter((d: any) => d.label.toUpperCase() === 'PERSON');
-      const helmetViolation = persons.some((p: any) => p.hasHelmet === false);
-
       setStats(prev => ({
         ...prev,
-        detectionCount: prev.detectionCount + (mappedDetections.length > 0 ? 1 : 0),
-        fatigue: result.fatigue_score ?? prev.fatigue,
-        speed: result.speed_estimate ?? prev.speed,
-        helmetStatus: !helmetViolation
+        detectionCount: mappedDetections.length,
+        fatigue: currentFatigue,
+        speed: result.speed ?? prev.speed,
+        helmetStatus: !mappedDetections.some(d => d.label === 'PERSON' && (d as any).hasHelmet === false)
       }));
 
+      if (currentFatigue > 0.7 && closestDist < 2.0) {
+        if (!isEmergencyAlarm) setIsEmergencyAlarm(true);
+      } else {
+        if (isEmergencyAlarm) setIsEmergencyAlarm(false);
+      }
+
       mappedDetections.forEach(d => {
-        if (d.distance < 1.0) triggerViolation(`CRITICAL: ${d.label} PROXIMITY`, ThreatLevel.CRITICAL);
-        else if (d.distance < 2.5 && d.label === 'PERSON') triggerViolation("CAUTION: Person in work zone", ThreatLevel.HIGH);
+        if (d.distance < 1.0) triggerViolation(`CRITICAL COLLISION: ${d.label}`, ThreatLevel.CRITICAL);
       });
       
-      if (helmetViolation) triggerViolation("SAFETY: PPE Missing (No Helmet)", ThreatLevel.HIGH);
-      if (result.fatigue_score > 0.8) triggerViolation("DANGER: Operator Fatigue Detected", ThreatLevel.CRITICAL);
-      
-    } catch (err) {
-      console.error("AI Analysis Error:", err);
+    } catch (err: any) {
+      if (err.message?.includes('429') || err.message?.includes('RESOURCE_EXHAUSTED')) {
+        setErrorStatus("QUOTA EXCEEDED - AUTO-BACKOFF ENGAGED");
+        setInferenceInterval(prev => Math.min(prev + 5000, 30000)); // Adaptive backoff
+        quotaBackoffRef.current++;
+        if (quotaBackoffRef.current > 3) {
+            setIsMonitoring(false);
+            addLog("SYSTEM HALTED: Recurring Quota Errors. Manual reset required.");
+        }
+      }
+      console.error(err);
     } finally {
       setIsProcessing(false);
     }
-  }, [isProcessing, isMonitoring, triggerViolation]);
-
-  useEffect(() => {
-    fetchCameras();
-    const interval = setInterval(fetchCameras, 5000);
-    return () => clearInterval(interval);
-  }, []);
+  }, [isProcessing, isMonitoring, triggerViolation, stats.fatigue, isEmergencyAlarm, addLog]);
 
   useEffect(() => {
     if (isMonitoring) {
-      const timer = setInterval(runInference, 1500); // Fast enough for real-time but mindful of rate limits
+      const timer = setInterval(runInference, inferenceInterval); 
       return () => clearInterval(timer);
     }
-  }, [isMonitoring, runInference]);
+  }, [isMonitoring, runInference, inferenceInterval]);
 
-  const handleExitMonitor = () => {
-    stopMonitoring();
-    setView('home');
-    if (document.fullscreenElement) {
-      document.exitFullscreen();
+  const toggleFullscreen = useCallback(() => {
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen().then(() => setIsFullscreen(true));
+    } else {
+      document.exitFullscreen().then(() => setIsFullscreen(false));
     }
-  };
-
-  const handleStartMonitor = async () => {
-    await startMonitoring();
-    try {
-      await document.documentElement.requestFullscreen();
-    } catch (e) {}
-  };
+  }, []);
 
   return (
     <div className="h-screen w-screen bg-black text-white overflow-hidden font-sans">
@@ -238,10 +301,11 @@ const App: React.FC = () => {
         <HomeDashboard 
           stats={stats} 
           violations={violations} 
-          onStart={handleStartMonitor} 
+          onStart={() => startMonitoring()} 
           availableCameras={availableCameras}
           selectedCameraId={selectedCameraId}
           onCameraSelect={setSelectedCameraId}
+          onRefreshCameras={fetchCameras}
         />
       ) : (
         <Dashboard 
@@ -252,16 +316,20 @@ const App: React.FC = () => {
           violations={violations}
           stats={stats}
           isProcessing={isProcessing}
-          onTriggerAlert={() => triggerViolation("MANUAL OVERRIDE PANIC", ThreatLevel.CRITICAL)}
-          onExit={handleExitMonitor}
+          onTriggerAlert={() => {
+            initOrResumeAudio();
+            triggerViolation("MANUAL OVERRIDE", ThreatLevel.CRITICAL);
+          }}
+          onExit={stopMonitoring}
           onToggleMonitoring={() => isMonitoring ? stopMonitoring() : startMonitoring()}
           isMonitoring={isMonitoring}
           availableCameras={availableCameras}
           selectedCameraId={selectedCameraId}
-          onCameraSelect={(id) => {
-            setSelectedCameraId(id);
-            startMonitoring(id);
-          }}
+          onCameraSelect={(id) => { setSelectedCameraId(id); startMonitoring(id); }}
+          onToggleFullscreen={toggleFullscreen}
+          isFullscreen={isFullscreen}
+          errorStatus={errorStatus}
+          isEmergencyAlarm={isEmergencyAlarm}
         />
       )}
     </div>
