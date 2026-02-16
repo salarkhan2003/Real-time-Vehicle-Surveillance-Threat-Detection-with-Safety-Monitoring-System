@@ -29,10 +29,23 @@ interface DashboardProps {
   isVehicleActive: boolean;
   onToggleFatigue: () => void;
   onToggleVehicle: () => void;
+  // ADAS features
+  enableLKA: boolean;
+  enableTSR: boolean;
+  enableIntent: boolean;
+  enableISP: boolean;
+  onToggleLKA: () => void;
+  onToggleTSR: () => void;
+  onToggleIntent: () => void;
+  onToggleISP: () => void;
+  lkaData: any;
+  tsrData: any;
+  intentData: any[];
+  ispData: any;
 }
 
 const Dashboard: React.FC<DashboardProps> = ({ 
-  stream, videoRef, detections, logs, violations, stats, isProcessing, onTriggerAlert, onExit, onToggleMonitoring, isMonitoring, availableCameras, selectedCameraId, onCameraSelect, onToggleFullscreen, isFullscreen, errorStatus, isEmergencyAlarm, isFatigueActive, isVehicleActive, onToggleFatigue, onToggleVehicle
+  stream, videoRef, detections, logs, violations, stats, isProcessing, onTriggerAlert, onExit, onToggleMonitoring, isMonitoring, availableCameras, selectedCameraId, onCameraSelect, onToggleFullscreen, isFullscreen, errorStatus, isEmergencyAlarm, isFatigueActive, isVehicleActive, onToggleFatigue, onToggleVehicle, enableLKA, enableTSR, enableIntent, enableISP, onToggleLKA, onToggleTSR, onToggleIntent, onToggleISP, lkaData, tsrData, intentData, ispData
 }) => {
   const closestDistance = detections.length > 0 ? Math.min(...detections.map(d => d.distance)) : 10;
   const globalThreat = isEmergencyAlarm ? ThreatLevel.CRITICAL : closestDistance < 2.5 ? ThreatLevel.HIGH : ThreatLevel.LOW;
@@ -104,6 +117,56 @@ const Dashboard: React.FC<DashboardProps> = ({
               Vehicle Surveillance
             </button>
           </div>
+          
+          {/* ADAS Features Switchboard */}
+          <div className="flex items-center gap-2 bg-white/5 border border-white/10 rounded-2xl px-3 py-2">
+            <span className="text-[8px] font-black text-white/40 uppercase tracking-wider mr-1">ADAS:</span>
+            <button 
+              onClick={onToggleLKA}
+              className={`px-3 py-1.5 rounded-lg font-black text-[8px] tracking-wider uppercase transition-all active:scale-95 ${
+                enableLKA 
+                  ? 'bg-cyan-600 text-white shadow-[0_0_10px_rgba(6,182,212,0.5)] border border-cyan-400/50' 
+                  : 'bg-white/5 text-white/40 border border-white/10'
+              }`}
+              title="Lane Keep Assist"
+            >
+              LKA
+            </button>
+            <button 
+              onClick={onToggleTSR}
+              className={`px-3 py-1.5 rounded-lg font-black text-[8px] tracking-wider uppercase transition-all active:scale-95 ${
+                enableTSR 
+                  ? 'bg-yellow-600 text-white shadow-[0_0_10px_rgba(234,179,8,0.5)] border border-yellow-400/50' 
+                  : 'bg-white/5 text-white/40 border border-white/10'
+              }`}
+              title="Traffic Sign Recognition"
+            >
+              TSR
+            </button>
+            <button 
+              onClick={onToggleIntent}
+              className={`px-3 py-1.5 rounded-lg font-black text-[8px] tracking-wider uppercase transition-all active:scale-95 ${
+                enableIntent 
+                  ? 'bg-orange-600 text-white shadow-[0_0_10px_rgba(249,115,22,0.5)] border border-orange-400/50' 
+                  : 'bg-white/5 text-white/40 border border-white/10'
+              }`}
+              title="Pedestrian Intent Prediction"
+            >
+              INTENT
+            </button>
+            <button 
+              onClick={onToggleISP}
+              className={`px-3 py-1.5 rounded-lg font-black text-[8px] tracking-wider uppercase transition-all active:scale-95 ${
+                enableISP 
+                  ? 'bg-indigo-600 text-white shadow-[0_0_10px_rgba(99,102,241,0.5)] border border-indigo-400/50' 
+                  : 'bg-white/5 text-white/40 border border-white/10'
+              }`}
+              title="Adaptive ISP"
+            >
+              ISP
+            </button>
+          </div>
+          
           <div className="h-8 w-px bg-white/10" />
           <button onClick={onToggleFullscreen} className="p-3 bg-white/5 hover:bg-white/10 rounded-2xl transition-all border border-white/5 text-white/60 active:scale-90">{isFullscreen ? 'EXIT_FULL' : 'ENTER_FULL'}</button>
           <select value={selectedCameraId} onChange={(e) => onCameraSelect(e.target.value)} className="bg-white/5 border border-white/10 text-[10px] font-bold uppercase rounded-xl px-4 py-2.5 text-white/80 outline-none">
@@ -151,8 +214,76 @@ const Dashboard: React.FC<DashboardProps> = ({
             <StatCard title="Fatigue" value={`${(stats.fatigue * 100).toFixed(0)}%`} color={stats.fatigue > 0.6 ? 'text-red-500' : 'text-white'} />
             <StatCard title="Status" value={isEmergencyAlarm ? "DANGER" : "READY"} color={isEmergencyAlarm ? 'text-red-500' : 'text-emerald-500'} />
           </div>
-          <div className="flex-1 bg-white/5 rounded-[2rem] border border-white/10 p-5 flex flex-col min-h-0"><h2 className="text-[9px] font-black text-white/30 uppercase tracking-[0.3em] mb-4">VIOLATION_DB</h2><ViolationTable violations={violations} /></div>
-          <div className="h-44 bg-black/40 rounded-[2rem] border border-white/10 p-5 flex flex-col min-h-0"><h2 className="text-[9px] font-black text-white/30 uppercase tracking-[0.3em] mb-3">SYSTEM_LOGS</h2><LogPanel logs={logs} /></div>
+          
+          {/* ADAS Data Display */}
+          {(enableLKA || enableTSR || enableIntent || enableISP) && (
+            <div className="bg-white/5 rounded-2xl border border-white/10 p-3 space-y-2 max-h-48 overflow-y-auto">
+              <h2 className="text-[9px] font-black text-white/30 uppercase tracking-[0.3em] mb-2 sticky top-0 bg-white/5 backdrop-blur-sm pb-1">ADAS_STATUS</h2>
+              
+              {enableLKA && lkaData && lkaData.detected && (
+                <div className="bg-black/40 rounded-lg p-2 border border-cyan-500/20">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-[7px] font-black text-cyan-400 uppercase">LKA</span>
+                    <span className={`text-[7px] font-black ${lkaData.departure_warning ? 'text-red-400' : 'text-emerald-400'}`}>
+                      {lkaData.departure_warning ? 'WARN' : 'OK'}
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-1 text-[6px]">
+                    <div><span className="text-white/40">Offset:</span> <span className="text-white font-bold">{lkaData.offset?.toFixed(2)}m</span></div>
+                    <div><span className="text-white/40">Angle:</span> <span className="text-white font-bold">{lkaData.steering_angle?.toFixed(1)}°</span></div>
+                  </div>
+                </div>
+              )}
+              
+              {enableTSR && tsrData && tsrData.signs_detected > 0 && (
+                <div className="bg-black/40 rounded-lg p-2 border border-yellow-500/20">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[7px] font-black text-yellow-400 uppercase">TSR</span>
+                    <span className="text-[7px] font-black text-white">{tsrData.signs_detected}</span>
+                  </div>
+                  {tsrData.speed_warning && (
+                    <div className="text-[6px] text-red-400 font-bold mt-1">{tsrData.speed_message}</div>
+                  )}
+                </div>
+              )}
+              
+              {enableIntent && intentData && intentData.length > 0 && (
+                <div className="bg-black/40 rounded-lg p-2 border border-orange-500/20">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[7px] font-black text-orange-400 uppercase">INTENT</span>
+                    <span className="text-[7px] font-black text-white">{intentData.length}</span>
+                  </div>
+                  {intentData.filter(i => i.warning).slice(0, 1).map((intent, idx) => (
+                    <div key={idx} className="text-[6px] text-red-400 font-bold mt-1">
+                      ⚠️ {(intent.crossing_probability * 100).toFixed(0)}%
+                    </div>
+                  ))}
+                </div>
+              )}
+              
+              {enableISP && ispData && ispData.active && (
+                <div className="bg-black/40 rounded-lg p-2 border border-indigo-500/20">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[7px] font-black text-indigo-400 uppercase">ISP</span>
+                    <span className="text-[6px] text-white/60">{ispData.condition}</span>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+          
+          <div className="flex-1 bg-white/5 rounded-[2rem] border border-white/10 p-5 flex flex-col min-h-0 overflow-hidden">
+            <h2 className="text-[9px] font-black text-white/30 uppercase tracking-[0.3em] mb-4">VIOLATION_DB</h2>
+            <div className="flex-1 overflow-auto">
+              <ViolationTable violations={violations} />
+            </div>
+          </div>
+          <div className="h-36 bg-black/40 rounded-[2rem] border border-white/10 p-5 flex flex-col overflow-hidden">
+            <h2 className="text-[9px] font-black text-white/30 uppercase tracking-[0.3em] mb-3">SYSTEM_LOGS</h2>
+            <div className="flex-1 overflow-auto">
+              <LogPanel logs={logs} />
+            </div>
+          </div>
         </div>
       </div>
     </div>

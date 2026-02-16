@@ -8,24 +8,25 @@ interface ViolationTableProps {
 
 const ViolationTable: React.FC<ViolationTableProps> = ({ violations }) => {
   return (
-    <div className="flex-1 overflow-auto">
-      <table className="w-full text-left text-[11px] font-mono border-separate border-spacing-y-2">
-        <thead className="sticky top-0 bg-slate-800/90 text-slate-500 uppercase">
-          <tr>
-            <th className="pb-2">Time</th>
-            <th className="pb-2">Type</th>
-            <th className="pb-2 text-right">Sev</th>
+    <div className="w-full h-full overflow-y-auto overflow-x-hidden">
+      <table className="w-full text-left text-[10px] font-mono">
+        <thead className="sticky top-0 bg-slate-900/95 backdrop-blur-sm z-10">
+          <tr className="border-b border-white/10">
+            <th className="pb-3 pt-1 px-2 text-white/40 font-black uppercase tracking-wider text-[8px]">Time</th>
+            <th className="pb-3 pt-1 px-2 text-white/40 font-black uppercase tracking-wider text-[8px]">Type</th>
+            <th className="pb-3 pt-1 px-2 text-right text-white/40 font-black uppercase tracking-wider text-[8px]">Severity</th>
           </tr>
         </thead>
-        <tbody>
+        <tbody className="divide-y divide-white/5">
           {violations.map((v) => (
-            <tr key={v.id} className="bg-slate-900/40 hover:bg-slate-700/50 transition-colors">
-              <td className="py-2 pl-2 rounded-l-md border-y border-l border-slate-700">{v.timestamp}</td>
-              <td className="py-2 border-y border-slate-700">{v.type}</td>
-              <td className="py-2 pr-2 text-right rounded-r-md border-y border-r border-slate-700">
-                <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold ${
-                  v.severity === ThreatLevel.CRITICAL ? 'bg-red-900/50 text-red-400' : 
-                  v.severity === ThreatLevel.HIGH ? 'bg-orange-900/50 text-orange-400' : 'bg-emerald-900/50 text-emerald-400'
+            <tr key={v.id} className="hover:bg-white/5 transition-colors">
+              <td className="py-3 px-2 text-white/60 font-mono text-[9px]">{v.timestamp}</td>
+              <td className="py-3 px-2 text-white font-medium text-[9px] truncate max-w-[120px]" title={v.type}>{v.type}</td>
+              <td className="py-3 px-2 text-right">
+                <span className={`px-2 py-1 rounded-lg text-[8px] font-black uppercase tracking-wider inline-block ${
+                  v.severity === ThreatLevel.CRITICAL ? 'bg-red-500/20 text-red-400 border border-red-500/30' : 
+                  v.severity === ThreatLevel.HIGH ? 'bg-orange-500/20 text-orange-400 border border-orange-500/30' : 
+                  'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
                 }`}>
                   {v.severity}
                 </span>
@@ -34,7 +35,15 @@ const ViolationTable: React.FC<ViolationTableProps> = ({ violations }) => {
           ))}
           {violations.length === 0 && (
             <tr>
-              <td colSpan={3} className="py-8 text-center text-slate-600">No violations detected in current session.</td>
+              <td colSpan={3} className="py-12 text-center">
+                <div className="flex flex-col items-center justify-center space-y-2">
+                  <svg className="w-12 h-12 text-white/10" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  <p className="text-white/30 text-[10px] font-bold uppercase tracking-wider">No violations detected</p>
+                  <p className="text-white/20 text-[8px]">System monitoring active</p>
+                </div>
+              </td>
             </tr>
           )}
         </tbody>

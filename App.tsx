@@ -20,6 +20,21 @@ const App: React.FC = () => {
   const [isEmergencyAlarm, setIsEmergencyAlarm] = useState(false);
   const [isFatigueActive, setIsFatigueActive] = useState(true);
   const [isVehicleActive, setIsVehicleActive] = useState(true);
+  
+  // ADAS Features state
+  const [enableLKA, setEnableLKA] = useState(true);  // Enable by default
+  const [enableTSR, setEnableTSR] = useState(true);  // Enable by default
+  const [enableIntent, setEnableIntent] = useState(true);  // Enable by default
+  const [enableISP, setEnableISP] = useState(true);
+  const [currentSpeed, setCurrentSpeed] = useState(60);  // Default speed for testing
+  
+  // ADAS data
+  const [lkaData, setLkaData] = useState<any>(null);
+  const [tsrData, setTsrData] = useState<any>(null);
+  const [intentData, setIntentData] = useState<any[]>([]);
+  const [ispData, setIspData] = useState<any>(null);
+  const [blackboxSaved, setBlackboxSaved] = useState<string | null>(null);
+  
   const [stats, setStats] = useState<SystemStats>({
     detectionCount: 0,
     speed: 0,
@@ -153,7 +168,7 @@ const App: React.FC = () => {
 
     setIsProcessing(true);
     try {
-      // Use YOLOv8 backend for accurate detection with mode selection
+      // Use YOLOv8 backend for accurate detection with mode selection + ADAS features
       const response = await fetch('http://localhost:5000/detect', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -162,7 +177,12 @@ const App: React.FC = () => {
           modes: {
             fatigue: isFatigueActive,
             vehicle: isVehicleActive
-          }
+          },
+          enable_lka: enableLKA,
+          enable_tsr: enableTSR,
+          enable_intent: enableIntent,
+          enable_isp: enableISP,
+          current_speed: currentSpeed
         })
       });
 
@@ -217,6 +237,45 @@ const App: React.FC = () => {
 
       setDetections(mappedDetections);
       
+      // Handle ADAS features data
+      if (result.laneKeepAssist) {
+        setLkaData(result.laneKeepAssist);
+        if (result.laneKeepAssist.departure_warning) {
+          addLog(`⚠️ LANE DEPARTURE: ${result.laneKeepAssist.status}`);
+        }
+      }
+      
+      if (result.trafficSigns) {
+        setTsrData(result.trafficSigns);
+        if (result.trafficSigns.speed_warning) {
+          addLog(`⚠️ ${result.trafficSigns.speed_message}`);
+        }
+      }
+      
+      if (result.pedestrianIntent) {
+        setIntentData(result.pedestrianIntent);
+        result.pedestrianIntent.forEach((intent: any) => {
+          if (intent.warning) {
+            addLog(`⚠️ PEDESTRIAN: ${intent.status} at ${intent.distance.toFixed(1)}m`);
+          }
+        });
+      }
+      
+      if (result.imageProcessing) {
+        setIspData(result.imageProcessing);
+        if (result.imageProcessing.active) {
+          // Only log once when condition changes
+          if (!ispData || ispData.condition !== result.imageProcessing.condition) {
+            addLog(`🌙 ISP: ${result.imageProcessing.enhancement}`);
+          }
+        }
+      }
+      
+      if (result.blackboxSaved) {
+        setBlackboxSaved(result.blackboxSaved);
+        addLog(`📹 BLACKBOX: Event recorded - ${result.blackboxSaved}`);
+      }
+      
       // Only log if there are actual detections or fatigue changes
       if (mappedDetections.length > 0 || (isFatigueActive && Math.abs(currentFatigue - stats.fatigue) > 0.1)) {
         addLog(`INF: Detected ${mappedDetections.length} entities. Fatigue: ${(currentFatigue * 100).toFixed(0)}%`);
@@ -263,6 +322,13 @@ const App: React.FC = () => {
             triggerViolation(`WARNING: ${d.label} APPROACHING`, ThreatLevel.HIGH);
           }
         });
+      }
+      
+      // Trigger violations for high fatigue
+      if (isFatigueActive && currentFatigue > 0.6) {
+        triggerViolation(`FATIGUE: ${(currentFatigue * 100).toFixed(0)}%`, ThreatLevel.HIGH);
+      } else if (isFatigueActive && currentFatigue > 0.8) {
+        triggerViolation(`CRITICAL FATIGUE: ${(currentFatigue * 100).toFixed(0)}%`, ThreatLevel.CRITICAL);
       }
 
     } catch (err: any) {
@@ -320,6 +386,18 @@ const App: React.FC = () => {
           isVehicleActive={isVehicleActive}
           onToggleFatigue={() => setIsFatigueActive(!isFatigueActive)}
           onToggleVehicle={() => setIsVehicleActive(!isVehicleActive)}
+          enableLKA={enableLKA}
+          enableTSR={enableTSR}
+          enableIntent={enableIntent}
+          enableISP={enableISP}
+          onToggleLKA={() => setEnableLKA(!enableLKA)}
+          onToggleTSR={() => setEnableTSR(!enableTSR)}
+          onToggleIntent={() => setEnableIntent(!enableIntent)}
+          onToggleISP={() => setEnableISP(!enableISP)}
+          lkaData={lkaData}
+          tsrData={tsrData}
+          intentData={intentData}
+          ispData={ispData}
         />
       )}
     </div>

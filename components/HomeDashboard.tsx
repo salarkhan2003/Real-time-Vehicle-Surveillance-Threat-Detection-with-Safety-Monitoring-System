@@ -23,6 +23,18 @@ const HomeDashboard: React.FC<HomeDashboardProps> = ({
   const currentTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   const currentDate = new Date().toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' });
 
+  // Working features only
+  const features = [
+    'YOLOv8x Object Detection',
+    'Fatigue Monitoring',
+    'Lane Keep Assist',
+    'Traffic Sign Recognition',
+    'Pedestrian Intent Prediction',
+    'Adaptive ISP Enhancement',
+    'Blackbox Recording',
+    'Collision Warning System'
+  ];
+
   return (
     <div className="relative h-full w-full bg-black overflow-hidden flex flex-col items-center justify-between p-10">
       <div className="absolute top-0 left-0 w-full h-full z-0 overflow-hidden pointer-events-none">
@@ -112,7 +124,26 @@ const HomeDashboard: React.FC<HomeDashboardProps> = ({
         </div>
       </div>
 
-      <div className="w-full max-w-6xl z-10 pb-6 flex justify-center">
+      <div className="w-full max-w-6xl z-10 pb-6 flex flex-col items-center gap-6">
+        {/* Features Checklist - Compact */}
+        <div className="w-full bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-5">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-xs font-black text-white/60 uppercase tracking-[0.3em]">System Features</h3>
+            <span className="text-[10px] text-emerald-400 font-bold">{features.length} Active</span>
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-x-6 gap-y-2">
+            {features.map((feature, idx) => (
+              <div key={idx} className="flex items-center gap-2">
+                <svg className="w-3 h-3 text-emerald-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                </svg>
+                <span className="text-[11px] text-white/80 font-medium">{feature}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Monitoring Button */}
         <button
           onClick={onStart}
           disabled={availableCameras.length === 0}
