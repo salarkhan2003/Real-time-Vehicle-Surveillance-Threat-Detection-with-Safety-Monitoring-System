@@ -3,8 +3,8 @@
 Advanced AI-powered vehicle surveillance and driver safety monitoring system with state-of-the-art object detection and fatigue detection.
 
 [![Status](https://img.shields.io/badge/Status-Production%20Ready-success)]()
-[![YOLOv10-X](https://img.shields.io/badge/YOLOv10--X-56.8%25%20mAP-blue)]()
-[![YOLOv8-FD](https://img.shields.io/badge/YOLOv8--FD-95%25%2B%20Accuracy-green)]()
+[![YOLOv11-X](https://img.shields.io/badge/YOLOv10--X-56.8%25%20mAP-blue)]()
+[![YOLOv11-FD](https://img.shields.io/badge/YOLOv8--FD-95%25%2B%20Accuracy-green)]()
 [![FPS](https://img.shields.io/badge/FPS-30%2B-orange)]()
 
 ---
@@ -13,12 +13,12 @@ Advanced AI-powered vehicle surveillance and driver safety monitoring system wit
 
 ### Core Detection Systems
 
-- **🎯 YOLOv10-X Object Detection** - 56.8% mAP, 97%+ accuracy, 30+ FPS
+- **🎯 YOLOv11-X Object Detection** - 56.8% mAP, 97%+ accuracy, 30+ FPS
   - Detects 80+ object classes (person, car, truck, bicycle, etc.)
   - Real-time distance estimation
   - Alert levels: CRITICAL (<2m), WARNING (<5m), SAFE (>5m)
 
-- **👁️ YOLOv8-FD Fatigue Detection** - 95%+ accuracy, 60+ FPS
+- **👁️ YOLOv11-FD Fatigue Detection** - 95%+ accuracy, 60+ FPS
   - Eye state detection (open/closed)
   - Yawning detection
   - Drowsiness levels: Alert (0%), Drowsy (70%), Sleeping (95%)
