@@ -3,7 +3,7 @@
 Advanced AI-powered vehicle surveillance and driver safety monitoring system with state-of-the-art object detection and fatigue detection.
 
 [![Status](https://img.shields.io/badge/Status-Production%20Ready-success)]()
-[![YOLOv11-X](https://img.shields.io/badge/YOLOv10--X-56.8%25%20mAP-blue)]()
+[![YOLOv11-X](https://img.shields.io/badge/YOLOv11--X-56.8%25%20mAP-blue)]()
 [![YOLOv11-FD](https://img.shields.io/badge/YOLOv8--FD-95%25%2B%20Accuracy-green)]()
 [![FPS](https://img.shields.io/badge/FPS-30%2B-orange)]()
 
