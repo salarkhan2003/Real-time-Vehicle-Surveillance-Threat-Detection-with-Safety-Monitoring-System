@@ -4,6 +4,7 @@ import Dashboard from './components/Dashboard';
 import HomeDashboard from './components/HomeDashboard';
 import { ThreatLevel, Detection, Violation, SystemStats } from './types';
 import { GoogleGenAI, Type } from "@google/genai";
+import { SpeedInsights } from '@vercel/speed-insights/react';
 
 const App: React.FC = () => {
   const [view, setView] = useState<'home' | 'monitor'>('home');
@@ -400,6 +401,7 @@ const App: React.FC = () => {
           ispData={ispData}
         />
       )}
+      <SpeedInsights />
     </div>
   );
 };
